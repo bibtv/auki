@@ -1,153 +1,130 @@
-# ROS to Posemesh Bridge Architecture
+# ROS Posemesh Bridge
+
+<p align="center">
+  <img src="docs/images/architecture.png" alt="ROS Posemesh Bridge Architecture" width="600">
+</p>
+
+Connect ROS2 robots to the [Posemesh](https://posemesh.org/) decentralized spatial computing network.
 
 ## Overview
 
-```
-┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
-│  ROS Robot  │────▶│  Posemesh Bridge │────▶│ Posemesh   │
-│  (Any ROS2  │     │  Node (C++/Py)   │     │ Domain     │
-│   robot)    │◀────│                  │◀────│            │
-└─────────────┘     └──────────────────┘     └─────────────┘
-      │                     │                       │
-      │ /tf, /odom,        │ P2P via               │ Calibration,
-      │ /scan, /image     │ libp2p                │ spatial data
-      │                   │                       │
-      ▼                   ▼                       ▼
-┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
-│ Sensor/Actuator│    │  Other Robots/   │     │  Domain     │
-│   Data       │    │  AR Devices       │     │  Owner      │
-└─────────────┘     └──────────────────┘     └─────────────┘
-```
+The ROS Posemesh Bridge enables robots to:
+- **Share pose data** with other devices on the posemesh network
+- **Receive poses** from other robots and AR devices
+- **Participate** in collaborative spatial computing
 
-## Bridge Node Design
+Built on top of the [Auki Labs](https://auki.com) posemesh protocol.
 
-### Core Responsibilities
+## Features
 
-1. **Pose Publishing** - Send robot pose to posemesh domain
-2. **Pose Subscription** - Receive poses from other devices
-3. **Domain Communication** - Calibrate with domain, exchange spatial data
-4. **Coordinate Transform** - Convert ROS ↔ Posemesh coordinate systems
+- 🔌 Connect ROS robots to posemesh domains
+- 📍 Real-time pose synchronization
+- 🔄 TF2 integration for coordinate transforms
+- ⚙️ Configurable publish rates
+- 🛡️ Relay fallback for NAT traversal
 
-### ROS Topics
+## Requirements
 
-| Direction | Topic | Type | Purpose |
-|-----------|-------|------|---------|
-| In | `/tf` | `tf2_msgs/TFMessage` | Robot pose |
-| In | `/odom` | `nav_msgs/Odometry` | Odometry backup |
-| In | `/scan` | `sensor_msgs/LaserScan` | For mapping |
-| Out | `/posemesh/robot_pose` | `geometry_msgs/PoseStamped` | Other devices' poses |
-| Out | `/posemesh/domain_status` | `std_msgs/String` | Domain connection status |
+- ROS2 (Humble or later)
+- C++17 compiler
+- Posemesh SDK (coming soon)
 
-### Architecture Layers
+## Quick Start
 
-```
-┌─────────────────────────────────────────┐
-│           ROS 2 Interface               │
-│  (Subscribers, Publishers, Actions)    │
-├─────────────────────────────────────────┤
-│         Coordinate Transform            │
-│  (ROS ↔ Posemesh frame conversion)    │
-├─────────────────────────────────────────┤
-│           Posemesh SDK                 │
-│  (libposemesh C++ / Python bindings)   │
-├─────────────────────────────────────────┤
-│         P2P Networking (libp2p)        │
-│  (QUIC, WebRTC, mDNS, relay)           │
-└─────────────────────────────────────────┘
+### Installation
+
+```bash
+# Clone the repository
+cd ~/colcon_ws/src
+git clone https://github.com/bibtv/auki.git
+
+# Build
+cd ~/colcon_ws
+colcon build --packages-select auki_posemesh_bridge
 ```
 
-## Implementation Options
+### Configuration
 
-### Option A: C++ Bridge (Recommended)
-- Direct SDK bindings (no wrapper overhead)
-- Best performance for real-time pose sync
-- More complex to develop
+Edit `config/params.yaml`:
 
-```cpp
-// Pseudocode
-class PosemeshBridge {
-  PosemeshSDK sdk;
-  rclcpp::Subscription<tf2_msgs::msg::TFMessage>::SharedPtr tf_sub;
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub;
-  
-  void on_tf(const tf2_msgs::msg::TFMessage::SharedPtr msg) {
-    // Extract robot pose from /tf
-    // Publish to posemesh domain
-    sdk.publish_pose(robot_pose);
-  }
-  
-  void on_posemesh_pose(const Pose& pose) {
-    // Convert to ROS coordinate frame
-    // Publish to /posemesh/robot_pose
-  }
-};
+```yaml
+domain_id: "your_domain_id"
+robot_id: "your_robot_name"
+domain_server_url: "localhost:8080"
+ros_frame_id: "base_link"
+pose_publish_rate: 10.0
 ```
 
-### Option B: Python Bridge (Faster Dev)
-- Use ctypes or pybind11 bindings
-- Easier to prototype
-- Slightly higher latency
+### Running
 
-### Option C: ROS2 Action/Service Hybrid
-- Action for domain calibration (long-running)
-- Service for pose queries
-- Parameter server for config
+```bash
+# Source workspace
+source install/setup.bash
 
-## Domain Interaction Flow
+# Launch with default config
+ros2 launch auki_posemesh_bridge bringup.launch.py
 
-```
-┌────────────┐     ┌────────────┐     ┌────────────┐
-│   Bridge   │────▶│   Domain   │────▶│  Calibration│
-│   Node     │     │   Server   │     │   Data     │
-└────────────┘     └────────────┘     └────────────┘
-      │                   │
-      │  1. Connect      │  2. Authenticate
-      │  3. Request      │  4. Return lighthouses
-      │     calibration  │     + spatial data
-      │
-      │  5. Publish pose │
-      │     continuously │
-      ▼
-┌────────────┐
-│ Other       │◀─── P2P pose exchange
-│ Devices     │
-└────────────┘
+# Or with arguments
+ros2 launch auki_posemesh_bridge bringup.launch.py \
+  domain_id:=test_domain \
+  robot_id:=my_robot
 ```
 
-## Key Challenges
-
-| Challenge | Solution |
-|-----------|----------|
-| Coordinate frames | Need lighthouse markers or known transform |
-| Real-time performance | Use ROS2 QoS best-effort for pose sync |
-| Authentication | Wallet-based (posemesh uses token economy) |
-| Network reliability | Relay fallback when P2P fails |
-
-## Files to Create
+## Project Structure
 
 ```
-ros_posemesh_bridge/
+auki/
+├── include/              # Header files
+│   └── ros_posemesh_bridge.hpp
+├── src/                 # Source files
+│   └── ros_posemesh_bridge.cpp
+├── launch/              # Launch files
+│   └── bringup.launch.py
+├── config/              # Configuration
+│   └── params.yaml
+├── docs/                # Documentation
+│   └── ARCHITECTURE.md
 ├── CMakeLists.txt
 ├── package.xml
-├── include/
-│   └── posemesh_bridge.hpp
-├── src/
-│   ├── posemesh_bridge_node.cpp
-│   └── coordinate_transform.cpp
-├── launch/
-│   └── bringup.launch.py
-├── config/
-│   └── params.yaml
 └── README.md
 ```
 
-## Next Steps
+## Documentation
 
-1. **Get domain access** - Create/test a posemesh domain
-2. **Build SDK** - Compile libposemesh for your platform
-3. **Create minimal bridge** - Publish dummy pose → domain
-4. **Add real tf** - Hook up actual robot data
+- [Architecture](docs/ARCHITECTURE.md) - Detailed system architecture
+- [ROS Topics](docs/ARCHITECTURE.md#topics) - Available topics
+- [Configuration](config/params.yaml) - Parameter reference
+
+## ROS Topics
+
+| Topic | Type | Description |
+|-------|------|-------------|
+| `/robot_pose` | PoseStamped | External pose input |
+| `/odom` | Odometry | Odometry data |
+| `/posemesh/robot_pose` | PoseStamped | Other device poses |
+| `/posemesh/domain_status` | String | Connection status |
+
+## Coordinate Frames
+
+- `world` - Fixed world frame
+- `base_link` - Robot's base frame
+- `pmap` - Posemesh domain frame
+
+## Related Projects
+
+- [posemesh](https://github.com/aukilabs/posemesh) - Core posemesh protocol
+- [auki_robotics](https://github.com/aukilabs/auki_robotics) - Auki robotics tools
+- [ConjureKit](https://conjurekit.dev) - AR SDK (predecessor to posemesh SDK)
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Credits
+
+- [Auki Labs](https://auki.com) - Posemesh protocol
+- [Posemesh Foundation](https://posemesh.org) - Decentralized spatial computing
 
 ---
 
-Want me to create the skeleton code for any of these components?
+Built by [BIBTV](https://github.com/bibtv) 🤖

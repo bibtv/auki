@@ -1,0 +1,27 @@
+# ROS Posemesh Bridge Configuration
+# ===================================
+
+# Connection Settings
+domain_id: "test_domain"
+robot_id: "ros_robot_01"
+domain_server_url: "localhost:8080"
+
+# Wallet for posemesh authentication (optional for open domains)
+# wallet_private_key: "your_private_key_here"
+
+# Frame IDs
+ros_frame_id: "base_link"
+posemesh_frame_id: "pmap"
+
+# Publishing Settings
+pose_publish_rate: 10.0  # Hz
+
+# Network Settings
+use_relay_fallback: true
+
+# Device Tracking
+# List of device IDs to track (empty = all devices)
+tracked_devices: []
+
+# Namespace for topics (optional)
+# namespace: "/posemesh"
